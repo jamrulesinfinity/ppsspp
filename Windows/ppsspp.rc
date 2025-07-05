@@ -742,7 +742,13 @@ BEGIN
         MENUITEM "Copy Value (8 bit)",         ID_MEMVIEW_COPYVALUE_8
         MENUITEM "Copy Value (16 bit)",        ID_MEMVIEW_COPYVALUE_16
         MENUITEM "Copy Value (32 bit)",        ID_MEMVIEW_COPYVALUE_32
+        //JamRules update context menu with new options
+        MENUITEM SEPARATOR
+        MENUITEM "Copy Value (16 bit) (LE)", ID_MEMVIEW_COPYVALUE_16_LE
+        MENUITEM "Copy Value (32 bit) (LE)", ID_MEMVIEW_COPYVALUE_32_LE
+        MENUITEM SEPARATOR
         MENUITEM "Dump...",                    ID_MEMVIEW_DUMP
+
     END
     POPUP "disasm"
     BEGIN
@@ -781,6 +787,11 @@ BEGIN
         MENUITEM "Delete",                     ID_DISASM_DELETEBREAKPOINT
         MENUITEM SEPARATOR
         MENUITEM "Add New",                    ID_DISASM_ADDNEWBREAKPOINT
+        //JamRules update context menu with new options
+        MENUITEM SEPARATOR
+        MENUITEM "Export Breakpoints...",      ID_DISASM_EXPORTBREAKPOINTS
+        MENUITEM "Import Breakpoints...",      ID_DISASM_IMPORTBREAKPOINTS
+
     END
     POPUP "threadlist"
     BEGIN
@@ -790,6 +801,10 @@ BEGIN
     POPUP "newbreakpoint"
     BEGIN
         MENUITEM "Add New",                    ID_DISASM_ADDNEWBREAKPOINT
+        //JamRules
+        MENUITEM SEPARATOR
+        MENUITEM "Export Breakpoints...",      ID_DISASM_EXPORTBREAKPOINTS
+        MENUITEM "Import Breakpoints...",      ID_DISASM_IMPORTBREAKPOINTS
     END
     POPUP "displaylistview"
     BEGIN

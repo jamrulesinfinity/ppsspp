@@ -52,6 +52,9 @@ private:
 	MIPSDebugInterface* cpu;
 	CtrlDisAsmView* disasm;
 
+	//JamRules
+	HWND hWnd_;
+
 	void editBreakpoint(int itemIndex);
 	void gotoBreakpointAddress(int itemIndex);
 	void removeBreakpoint(int itemIndex);
@@ -59,6 +62,10 @@ private:
 	int getBreakpointIndex(int itemIndex, bool& isMemory);
 	void showBreakpointMenu(int itemIndex, const POINT &pt);
 	void toggleEnabled(int itemIndex);
+
+	//JamRules
+	void exportBreakpoints();
+	void importBreakpoints();
 };
 
 class CtrlStackTraceView: public GenericListControl

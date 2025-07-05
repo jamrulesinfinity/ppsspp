@@ -371,3 +371,11 @@
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif
+
+
+//JamRules add new values
+//TODO: Set proper values, should probably continue on from 40236 and update _APS_NEXT_COMMAND_VALUE, not sure 
+#define ID_MEMVIEW_COPYVALUE_16_LE          41000
+#define ID_MEMVIEW_COPYVALUE_32_LE          41001
+#define ID_DISASM_EXPORTBREAKPOINTS			41002
+#define ID_DISASM_IMPORTBREAKPOINTS			41003

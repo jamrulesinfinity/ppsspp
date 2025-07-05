@@ -256,6 +256,21 @@ CGEDebugger::CGEDebugger(HINSTANCE _hInstance, HWND _hParent)
 	int y = g_Config.iGEWindowY == -1 ? windowRect.top : g_Config.iGEWindowY;
 	int w = g_Config.iGEWindowW == -1 ? minWidth_ : std::max(minWidth_, g_Config.iGEWindowW);
 	int h = g_Config.iGEWindowH == -1 ? minHeight_ : std::max(minHeight_, g_Config.iGEWindowH);
+
+	//JamRules Ensure window opens on screen 
+	RECT toCheckRect;
+	toCheckRect.left = x;
+	toCheckRect.right = x + w;
+	toCheckRect.top = y;
+	toCheckRect.bottom = y + h;
+
+	HMONITOR hMon = MonitorFromRect(&toCheckRect, MONITOR_DEFAULTTONULL);
+	if (hMon == NULL) {
+		// point is off screen so move to a default of 0,0
+		x = 0;
+		y = 0;
+	}
+
 	MoveWindow(m_hDlg,x,y,w,h,FALSE);
 
 	SetTimer(m_hDlg, 1, USER_TIMER_MINIMUM, nullptr);

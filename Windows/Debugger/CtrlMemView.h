@@ -15,6 +15,9 @@
 #include "Core/Debugger/MemBlockInfo.h"
 #include "Core/MIPS/MIPSDebugInterface.h"
 
+//JamRules required for swap16 / swap32
+#include "Common/BitSet.h"
+
 enum OffsetSpacing {
 	offsetSpace = 3, // the number of blank lines that should be left to make space for the offsets
 	offsetLine  = 1, // the line on which the offsets should be written

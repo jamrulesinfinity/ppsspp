@@ -12,6 +12,12 @@
 #include "Windows/main.h"
 #include "Common/Data/Encoding/Utf8.h"
 #include "Core/HLE/sceKernelThread.h"
+#include "Common/Data/Format/JSONWriter.h" //JamRules
+#include <Windows/W32Util/ShellUtil.h> //JamRules
+#include "Common/Serialize/Serializer.h" //JamRules
+#include "Common/File/FileUtil.h" //JamRules
+#include <Data/Format/JSONReader.h> //JamRules
+#include <StringUtils.h> //JamRules
 
 enum { TL_NAME, TL_PROGRAMCOUNTER, TL_ENTRYPOINT, TL_PRIORITY, TL_STATE, TL_WAITTYPE, TL_COLUMNCOUNT };
 enum { BPL_ENABLED, BPL_TYPE, BPL_OFFSET, BPL_SIZELABEL, BPL_OPCODE, BPL_CONDITION, BPL_HITS, BPL_COLUMNCOUNT };
@@ -268,6 +274,9 @@ const char* CtrlThreadList::getCurrentThreadName()
 CtrlBreakpointList::CtrlBreakpointList(HWND hwnd, MIPSDebugInterface* cpu, CtrlDisAsmView* disasm)
 	: GenericListControl(hwnd,breakpointListDef),cpu(cpu),disasm(disasm)
 {
+	//JamRules store for later
+	hWnd_ = hwnd;
+
 	SetSendInvalidRows(true);
 	Update();
 }
@@ -587,6 +596,19 @@ void CtrlBreakpointList::showBreakpointMenu(int itemIndex, const POINT &pt)
 				if (bpw.exec()) bpw.addBreakpoint();
 			}
 			break;
+
+			//JamRules Add new actions
+		case ID_DISASM_EXPORTBREAKPOINTS:
+			{
+				exportBreakpoints();
+			}
+			break;
+
+		case ID_DISASM_IMPORTBREAKPOINTS:
+			{
+				importBreakpoints();
+			}
+			break;
 		}
 	} else {
 		MemCheck mcPrev;
@@ -625,8 +647,334 @@ void CtrlBreakpointList::showBreakpointMenu(int itemIndex, const POINT &pt)
 		case ID_DISASM_DELETEBREAKPOINT:
 			removeBreakpoint(itemIndex);
 			break;
+
+
+			//JamRules Add new actions 
+		case ID_DISASM_EXPORTBREAKPOINTS:
+			{
+			exportBreakpoints();
+			}
+			break;
+
+		case ID_DISASM_IMPORTBREAKPOINTS:
+			{
+			importBreakpoints();
+			}
+			break;
+
+
 		}
 	}
+}
+
+
+//JamRules export to JSON
+void CtrlBreakpointList::exportBreakpoints()
+{
+	// check if there are execute breakpoints
+	bool hasBPs = g_breakpoints.HasBreakPoints();
+
+	// check if there are memory breakpoints
+	bool hasMCs = g_breakpoints.HasMemChecks();
+
+	// continue if there are either 
+	if (hasBPs || hasMCs)
+	{
+		//start new JSON writer 
+		json::JsonWriter json;
+		json.begin();
+
+		if (hasBPs)
+		{
+			//export breakpoints if there are some
+			json.pushArray("breakpoints");
+			auto bps = g_breakpoints.GetBreakpoints();
+			for (const auto& bp : bps) {
+				if (bp.temporary)
+					continue;
+
+				json.pushDict();
+				json.writeUint("address", bp.addr);
+				json.writeBool("enabled", bp.IsEnabled());
+				json.writeBool("log", (bp.result & BREAK_ACTION_LOG) != 0);
+				if (bp.hasCond)
+					json.writeString("condition", bp.cond.expressionString);
+				else
+					json.writeNull("condition");
+				if (!bp.logFormat.empty())
+					json.writeString("logFormat", bp.logFormat);
+				else
+					json.writeNull("logFormat");
+				std::string symbol = g_symbolMap->GetLabelString(bp.addr);
+				if (symbol.empty())
+					json.writeNull("symbol");
+				else
+					json.writeString("symbol", symbol);
+
+				DisassemblyLineInfo line;
+				g_disassemblyManager.getLine(g_disassemblyManager.getStartAddress(bp.addr), true, line, currentDebugMIPS);
+				json.writeString("code", line.name + " " + line.params);
+
+				json.pop();
+			}
+			json.pop();
+		}
+
+		if (hasMCs)
+		{
+			//export memchecks if there are some
+			json.pushArray("memchecks");
+			auto mcs = g_breakpoints.GetMemChecks();
+			for (const auto& mc : mcs) {
+				json.pushDict();
+				json.writeUint("address", mc.start);
+				json.writeUint("size", mc.end == 0 ? 0 : mc.end - mc.start);
+				json.writeBool("enabled", mc.IsEnabled());
+				json.writeBool("log", (mc.result & BREAK_ACTION_LOG) != 0);
+				json.writeBool("read", (mc.cond & MEMCHECK_READ) != 0);
+				json.writeBool("write", (mc.cond & MEMCHECK_WRITE) != 0);
+				json.writeBool("change", (mc.cond & MEMCHECK_WRITE_ONCHANGE) != 0);
+				json.writeUint("hits", mc.numHits);
+				if (mc.hasCondition)
+					json.writeString("condition", mc.condition.expressionString);
+				else
+					json.writeNull("condition");
+				if (!mc.logFormat.empty())
+					json.writeString("logFormat", mc.logFormat);
+				else
+					json.writeNull("logFormat");
+				std::string symbol = g_symbolMap->GetLabelString(mc.start);
+				if (symbol.empty())
+					json.writeNull("symbol");
+				else
+					json.writeString("symbol", symbol);
+
+				json.pop();
+			}
+			json.pop();
+		}
+
+		json.end();
+
+		std::string str = json.str();
+
+		std::string fn;
+
+		//open prompt for filename
+		if (W32Util::BrowseForFileName(false, hWnd_, L"Breakpoints", 0, L"JSON (*.json)\0*.json\0All files\0*.*\0\0", L"json", fn)) {
+
+			//set to wait cursor
+			SetCursor(LoadCursor(0, IDC_WAIT));
+
+			const Path& filename = Path(fn);
+
+			char const* buffer = str.c_str();
+			size_t write_len = strlen(buffer);
+
+			//attempt to create new file
+			File::IOFile pFile = File::IOFile(filename, "wb");
+
+			if (!pFile) {
+				//failed to open file
+				ERROR_LOG(Log::System, "CtrlBreakpointList: Error opening file for write");
+
+				//set cursor back to normal
+				SetCursor(LoadCursor(0, IDC_ARROW));
+
+				return;
+			}
+
+			//write contents to file
+			if (!pFile.WriteBytes(buffer, write_len)) {
+				ERROR_LOG(Log::System, "CtrlBreakpointList: Failed writing data");
+
+				//set cursor back to normal
+				SetCursor(LoadCursor(0, IDC_ARROW));
+
+				return;
+			}
+
+			//set cursor back to normal
+			SetCursor(LoadCursor(0, IDC_ARROW));
+		}
+		//no filename selected 
+
+	}
+	//else nothing to export 
+	//TODO: show warning message? 
+}
+
+//JamRules import from JSON
+void CtrlBreakpointList::importBreakpoints()
+{
+	std::string fn;
+
+	//browse for file
+	if (W32Util::BrowseForFileName(true, hWnd_, L"Breakpoints", 0, L"JSON (*.json)\0*.json\0All files\0*.*\0\0", L"json", fn)) {
+
+		SetCursor(LoadCursor(0, IDC_WAIT));
+
+		INFO_LOG(Log::SaveState, "Loading json from '%s'", fn.c_str());
+
+		const Path& filename = Path(fn);
+
+		//attempt to open file
+		File::IOFile pFile = File::IOFile(filename, "rb");
+
+		if (!pFile) {
+			//failed to open file
+			ERROR_LOG(Log::System, "CtrlBreakpointList::importBreakpoints - Error opening file");
+
+			//set cursor back to normal
+			SetCursor(LoadCursor(0, IDC_ARROW));
+
+			return;
+		}
+
+		//char const* buffer = str.c_str();
+		//size_t write_len = strlen(buffer);
+
+		//load file 
+		const u64 fileSize = pFile.GetSize();
+		
+		//u8* buffer = new u8[fileSize];
+
+		//TODO: improve this
+		char* buffer = new char[fileSize];
+
+		if (!pFile.ReadBytes(buffer, fileSize))
+		{
+			ERROR_LOG(Log::System, "CtrlBreakpointList::importBreakpoints - Error reading file");
+			delete[] buffer;
+			return;
+		}
+
+		//TODO: improve this
+		std::string json = buffer;
+
+		using namespace json;
+		JsonReader reader(json.c_str(), json.size());
+		if (!reader.ok() || !reader.root()) {
+			ERROR_LOG(Log::System, "CtrlBreakpointList::importBreakpoints - Error parsing JSON");
+			return;
+		}
+
+		//parse JSON
+		const JsonGet root = reader.root();
+
+		//load breakpoints
+		const JsonNode* breakpoints = root.getArray("breakpoints");
+		if (breakpoints) {
+
+			//loop each record
+			for (const JsonNode* pbreakpoint : breakpoints->value) {
+
+				//load values
+				JsonGet breakpoint = pbreakpoint->value;
+				u32 address = breakpoint.getInt("address", 0);
+				bool enabled = breakpoint.getBool("enabled");
+				bool log = breakpoint.getBool("log");
+				std::string condition = breakpoint.getStringOr("condition", "");
+				std::string logFormat = breakpoint.getStringOr("logFormat", "");
+				//std::string symbol = breakpoint.getStringOr("symbol", "");//unused
+				//std::string code = breakpoint.getStringOr("code", "");//unused
+
+				//TODO: check for errors 
+
+				BreakAction result = BREAK_ACTION_IGNORE;
+				if (log)
+					result |= BREAK_ACTION_LOG;
+				if (enabled)
+					result |= BREAK_ACTION_PAUSE;
+		
+				// add breakpoint
+				g_breakpoints.AddBreakPoint(address, false);
+
+				if (!condition.empty()) {
+					BreakPointCond cond;
+					cond.debug = currentDebugMIPS;//cpu; //TODO: TEST THIS
+					cond.expressionString = condition;
+	
+					PostfixExpression compiledCondition;
+					if (initExpression(currentDebugMIPS, condition.c_str(), compiledCondition)) {
+						cond.expression = compiledCondition;
+						g_breakpoints.ChangeBreakPointAddCond(address, cond);
+					}
+					else {
+						ERROR_LOG(Log::System, StringFromFormat("CtrlBreakpointList::importBreakpoints - Could not parse breakpoint expression syntax: %s", getExpressionError()).c_str());
+					}
+				}
+
+				g_breakpoints.ChangeBreakPoint(address, result);
+				g_breakpoints.ChangeBreakPointLogFormat(address, logFormat);
+	
+			}
+		}
+
+		//load memory checks 
+		const JsonNode* memchecks = root.getArray("memchecks");
+		if (memchecks) {
+
+			//loop each record
+			for (const JsonNode* pmemcheck : memchecks->value) {
+
+				//load values
+				JsonGet memcheck = pmemcheck->value;
+				u32 address = memcheck.getInt("address", 0);
+				u32 size = memcheck.getInt("size", 0);
+				bool enabled = memcheck.getBool("enabled");
+				bool log = memcheck.getBool("log");
+				bool read = memcheck.getBool("read");
+				bool write = memcheck.getBool("write");
+				bool onChange = memcheck.getBool("change");
+				//u32 hits = memcheck.getBool("hits");//unused
+				std::string condition = memcheck.getStringOr("condition", "");
+				std::string logFormat = memcheck.getStringOr("logFormat", "");
+				//std::string symbol = memcheck.getStringOr("symbol", "");//unused
+				//std::string code = memcheck.getStringOr("code", "");//unused
+
+				BreakAction result = BREAK_ACTION_IGNORE;
+				if (log)
+					result |= BREAK_ACTION_LOG;
+				if (enabled)
+					result |= BREAK_ACTION_PAUSE;
+	
+				// add memcheck
+				int cond = 0;
+				if (read)
+					cond |= MEMCHECK_READ;
+				if (write)
+					cond |= MEMCHECK_WRITE;
+				if (onChange)
+					cond |= MEMCHECK_WRITE_ONCHANGE;
+
+				g_breakpoints.AddMemCheck(address, address + size, (MemCheckCondition)cond, result);
+
+				if (!condition.empty()) {
+					BreakPointCond cond;
+					cond.debug = cpu;
+					cond.expressionString = condition;
+
+					PostfixExpression compiledCondition;
+					if (initExpression(currentDebugMIPS, condition.c_str(), compiledCondition)) {
+						cond.expression = compiledCondition;
+						g_breakpoints.ChangeMemCheckAddCond(address, address + size, cond);
+					}
+					else
+					{
+						ERROR_LOG(Log::System, StringFromFormat("CtrlBreakpointList::importBreakpoints - Could not parse memcheck expression syntax: %s", getExpressionError()).c_str());
+					}
+				}
+
+				g_breakpoints.ChangeMemCheckLogFormat(address, address + size, logFormat);
+			}
+
+		}
+
+		//TODO: clean up? not sure what clean is needed in c++
+
+	}
+
 }
 
 //

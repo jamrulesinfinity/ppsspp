@@ -110,6 +110,20 @@ CDisasm::CDisasm(HINSTANCE _hInstance, HWND _hParent, MIPSDebugInterface *_cpu) 
 	int w = g_Config.iDisasmWindowW == -1 ? defaultWidth : g_Config.iDisasmWindowW;
 	int h = g_Config.iDisasmWindowH == -1 ? defaultHeight : g_Config.iDisasmWindowH;
 
+	//JamRules Ensure window opens on screen 
+	RECT toCheckRect;
+	toCheckRect.left = x;
+	toCheckRect.right = x + w;
+	toCheckRect.top = y;
+	toCheckRect.bottom = y + h;
+
+	HMONITOR hMon = MonitorFromRect(&toCheckRect, MONITOR_DEFAULTTONULL);
+	if (hMon == NULL) {
+		// point is off screen so move to a default of 0,0
+		x = 0;
+		y = 0;
+	}
+
 	// init status bar
 	statusBarWnd = CreateWindowEx(0, STATUSCLASSNAME, L"", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, m_hDlg, (HMENU)IDC_DISASMSTATUSBAR, _hInstance, NULL);
 	if (g_Config.bDisplayStatusBar == false) {

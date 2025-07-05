@@ -510,6 +510,10 @@ void CtrlMemView::onMouseUp(WPARAM wParam, LPARAM lParam, int button) {
 		EnableMenuItem(menu, ID_MEMVIEW_COPYVALUE_32, enable32 ? MF_ENABLED : MF_GRAYED);
 		EnableMenuItem(menu, ID_MEMVIEW_COPYFLOAT_32, enable32 ? MF_ENABLED : MF_GRAYED);
 
+		//JamRules add new right click options for Little Endian actions 
+		EnableMenuItem(menu, ID_MEMVIEW_COPYVALUE_16_LE, enable16 ? MF_ENABLED : MF_GRAYED);
+		EnableMenuItem(menu, ID_MEMVIEW_COPYVALUE_32_LE, enable32 ? MF_ENABLED : MF_GRAYED);
+
 		switch (TriggerContextMenu(ContextMenuID::MEMVIEW, wnd, ContextPoint::FromEvent(lParam))) {
 		case ID_MEMVIEW_DUMP:
 			{
@@ -636,7 +640,62 @@ void CtrlMemView::onMouseUp(WPARAM wParam, LPARAM lParam, int button) {
 				disasmWindow->Show(true);
 			}
 			break;
+
+		//JamRules Little Endian version 
+		case ID_MEMVIEW_COPYVALUE_16_LE:
+		{
+			auto memLock = Memory::Lock();
+			size_t tempSize = 5 * ((selectedSize + 1) / 2) + 1;
+			char* temp = new char[tempSize];
+			memset(temp, 0, tempSize);
+
+			char* pos = temp;
+			for (uint32_t p = selectRangeStart_; p < selectRangeEnd_; p += 2) {
+				uint16_t c = Memory::IsValidRange(p, 2) ? Memory::ReadUnchecked_U16(p) : 0xFFFF;
+
+				//JamRules Flip endian 
+				c = swap16(c);
+
+				pos += snprintf(pos, tempSize - (pos - temp + 1), "%04X ", c);
+			}
+			// Clear the last space.
+			if (pos > temp)
+				*(pos - 1) = '\0';
+
+			W32Util::CopyTextToClipboard(wnd, temp);
+			delete[] temp;
 		}
+		break;
+
+		//JamRules Little Endian version 
+		case ID_MEMVIEW_COPYVALUE_32_LE:
+			{
+				auto memLock = Memory::Lock();
+				size_t tempSize = 9 * ((selectedSize + 3) / 4) + 1;
+				char* temp = new char[tempSize];
+				memset(temp, 0, tempSize);
+
+				char* pos = temp;
+				for (uint32_t p = selectRangeStart_; p < selectRangeEnd_; p += 4) {
+					uint32_t c = Memory::IsValidRange(p, 4) ? Memory::ReadUnchecked_U32(p) : 0xFFFFFFFF;
+					
+					//JamRules Flip endian 
+					c = swap32(c);
+
+					pos += snprintf(pos, tempSize - (pos - temp + 1), "%08X ", c);
+				}
+				// Clear the last space.
+				if (pos > temp)
+					*(pos - 1) = '\0';
+
+				W32Util::CopyTextToClipboard(wnd, temp);
+				delete[] temp;
+			}
+			break;
+
+
+		}
+
 		return;
 	}
 

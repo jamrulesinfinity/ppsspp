@@ -192,6 +192,11 @@ BOOL CMemoryDlg::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 		case IDC_BUTTON_SEARCH:
 			switch (HIWORD(wParam)) {
 			case BN_CLICKED:
+
+
+				//TODO: TEST USE JamRules 
+				g_symbolMap->FillSymbolListBox(symListHdl, ST_DATA);
+
 				GetWindowText(searchBoxHdl, temp, 255);
 				std::vector<u32> results = memView->searchString(ConvertWStringToUTF8(temp));
 				if (results.size() > 0){
